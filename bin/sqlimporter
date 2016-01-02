@@ -3,9 +3,11 @@
 
 require __DIR__.'/../vendor/autoload.php';
 
+use MehrAlsNix\Couchbase\FlushCommand;
 use MehrAlsNix\Couchbase\MySqlImportCommand;
 use Symfony\Component\Console\Application;
 
 $application = new Application();
 $application->add(new MySqlImportCommand());
+$application->add(new FlushCommand());
 $application->run();
