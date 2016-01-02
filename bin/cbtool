@@ -5,11 +5,11 @@ require __DIR__.'/../vendor/autoload.php';
 
 use MehrAlsNix\Couchbase\FlushCommand;
 use MehrAlsNix\Couchbase\InfoCommand;
-use MehrAlsNix\Couchbase\MySqlImportCommand;
+use MehrAlsNix\Couchbase\DBImportCommand;
 use Symfony\Component\Console\Application;
 
 $application = new Application();
-$application->add(new MySqlImportCommand());
+$application->add(new DBImportCommand());
 $application->add(new FlushCommand());
 $application->add(new InfoCommand());
 $application->run();

@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class MySqlImportCommand extends Command
+class DBImportCommand extends Command
 {
     private static $COUCHBASE_URIS = "cb.uris";
     private static $COUCHBASE_BUCKET = "cb.bucket";
@@ -109,22 +109,26 @@ class MySqlImportCommand extends Command
                 $this->password = $prop[self::$COUCHBASE_PASSWORD];
             }
 
+            if (isset($prop[self::$COUCHBASE_USERNAME])) {
+                $this->username = $prop[self::$COUCHBASE_USERNAME];
+            }
+
             if (isset($prop[self::$SQL_DATABASE])) {
                 $this->sqlDatabase = $prop[self::$SQL_DATABASE];
             } else {
-                throw new RuntimeException(" JDBC Connection String not specified");
+                throw new RuntimeException(" Doctrine Connection String not specified");
             }
 
             if (isset($prop[self::$SQL_USER])) {
                 $this->sqlUser = $prop[self::$SQL_USER];
             } else {
-                throw new RuntimeException(" JDBC User not specified");
+                throw new RuntimeException(" Doctrine User not specified");
             }
 
             if (isset($prop[self::$SQL_PASSWORD])) {
                 $this->sqlPassword = $prop[self::$SQL_PASSWORD];
             } else {
-                throw new RuntimeException(" JDBC Password not specified");
+                throw new RuntimeException(" Doctrine Password not specified");
             }
 
             if (isset($prop[self::$TABLES_LIST])) {
@@ -218,7 +222,7 @@ class MySqlImportCommand extends Command
                 }
 
                 // use the rs number as key with table name
-                $this->getCouchbaseClient()->openBucket()->insert($typeName . ":" . $counter, json_encode($map));
+                $this->getCouchbaseClient()->openBucket()->upsert($typeName . ":" . $counter, json_encode($map));
 
                 $numRow = $counter;
                 $counter++;
@@ -233,40 +237,34 @@ class MySqlImportCommand extends Command
     private function createViewsForPrimaryKey($tableName)
     {
         $typeName = $this->getNamewithCase($tableName, $this->typeFieldCase);
-        $pkCols = [];
 
         try {
-            $rs = $this->getConnection()->getSchemaManager()->listTableForeignKeys($tableName);
-            while ($rs->next()) {
-                $pkCols[] = $rs->getString(4);
-            }
+            $array = $this->getConnection()->getSchemaManager()->listTableForeignKeys($tableName);
 
             $mapFunction = '';
             $ifStatement = '';
             $emitStatement = '';
 
-
             $mapFunction .= "function (doc, meta) {\n";
             $mapFunction .= "  var idx = (meta.id).indexOf(\":\");\n";
             $mapFunction .= "  var docType = (meta.id).substring(0,idx); \n";
 
-
-            if ($array != null && count($array) == 1) {
+            if (!empty($array) && count($array) == 1) {
                 $ifStatement .= "  if (meta.type == 'json' && docType == '";
                 $ifStatement .= $typeName;
                 $ifStatement .= "'  && doc.";
-                $ifStatement .= $this->getNamewithCase($array[0], $this->typeFieldCase);
+                $ifStatement .= $this->getNamewithCase($array[0]->getName(), $this->typeFieldCase);
                 $ifStatement .= " ){ \n";
-                $emitStatement .= "    emit(doc." . $array[0] . ");";
-            } else if ($array != null && count($array) > 1) {
+                $emitStatement .= "    emit(doc." . $array[0]->getName() . ");";
+            } elseif (!empty($array) && count($array) > 1) {
                 $emitStatement .= "    emit([";
                 $ifStatement .= "  if (meta.type == 'json' && docType == '";
                 $ifStatement .= $typeName;
                 $ifStatement .= "'  && ";
 
                 for ($i = 0; $i < count($array); $i++) {
-                    $emitStatement .= "doc." . $this->getNamewithCase($array[$i], $this->typeFieldCase);
-                    $ifStatement .= "doc." . $this->getNamewithCase($array[$i], $this->typeFieldCase);
+                    $emitStatement .= "doc." . $this->getNamewithCase($array[$i]->getName(), $this->typeFieldCase);
+                    $ifStatement .= "doc." . $this->getNamewithCase($array[$i]->getName(), $this->typeFieldCase);
                     if ($i < (count($array) - 1)) {
                         $emitStatement .= ", ";
                         $ifStatement .= " && ";
@@ -282,17 +280,12 @@ class MySqlImportCommand extends Command
                 . "}\n";
 
             $this->output->writeln("\n\n Create Couchbase views for table " . $typeName);
-            $designDoc = new DesignDocument($tableName);
             $viewName = "by_pk";
-            $reduceFunction = "_count";
-            $viewDesign = new ViewDesign($viewName, $mapFunction->toString(), $reduceFunction);
-            $designDoc->getViews()->add($viewDesign);
-            $this->getCouchbaseClient()->createDesignDoc($designDoc);
-
-
-        } catch (SQLException $e) {
-            $this->output->writeln($e->getTraceAsString());  //To change body of catch statement use File | Settings | File Templates.
+            $map = '{"views":{"'.$viewName.'":{"map":"'.$mapFunction.'","reduce":"_count"}}}';
+            $this->getCouchbaseClient()->openBucket($this->bucket)->manager()->upsertDesignDocument($viewName, $map);
         } catch (RuntimeException $e) {
+            $this->output->writeln($e->getTraceAsString());  //To change body of catch statement use File | Settings | File Templates.
+        } catch (\Exception $e) {
             $this->output->writeln($e->getTraceAsString());  //To change body of catch statement use File | Settings | File Templates.
         }
     }
@@ -300,8 +293,6 @@ class MySqlImportCommand extends Command
     private function createTableViews()
     {
         $this->output->writeln("\n\n Create Couchbase views for 'types' ....");
-
-        $designDoc = $this->getCouchbaseClient()->openBucket()->manager()->upsertDesignDocument('all');
 
         $viewName = "by_type";
         $mapFunction =
@@ -311,11 +302,10 @@ class MySqlImportCommand extends Command
             "    emit( (meta.id).substring(0,idx));\n" .
             "  }  \n" .
             "}";
-        $reduceFunction = "_count";
-        $viewDesign = new ViewDesign($viewName, $mapFunction, $reduceFunction);
-        $designDoc->getViews()->add($viewDesign);
-        $this->getCouchbaseClient()->createDesignDoc($designDoc);
 
+        $map = '{"views":{"all":{"map":"'.$mapFunction.'"}}}';
+        $reduce = '_count';
+        $this->getCouchbaseClient()->openBucket($this->bucket)->manager()->upsertDesignDocument($viewName, $map);
     }
 
     /**

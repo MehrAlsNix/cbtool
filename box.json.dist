@@ -1,5 +1,5 @@
 {
-    "alias": "sqlimporter.phar",
+    "alias": "cbtool.phar",
     "chmod": "0755",
     "compactors": [
         "Herrera\\Box\\Compactor\\Json",
@@ -28,7 +28,7 @@
     ],
     "git-commit": "git-commit",
     "git-version": "git-version",
-    "main": "bin/sqlimporter",
-    "output": "bin/sqlimporter-@git-version@.phar",
+    "main": "bin/cbtool",
+    "output": "bin/cbtool-@git-version@.phar",
     "stub": true
 }
