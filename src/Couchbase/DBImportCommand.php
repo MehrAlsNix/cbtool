@@ -213,7 +213,9 @@ class DBImportCommand extends Command
 
                 foreach ($this->getConnection()->getSchemaManager()->listTableColumns($tableName) as $rsmd) {
                     $columnName = $this->getNamewithCase($rsmd->getName(), $this->typeFieldCase);
-
+                    if (!isset($rs[$columnName])) {
+                        continue;
+                    }
                     $map[$columnName][] = $rs[$columnName];
                 }
 
@@ -253,9 +255,9 @@ class DBImportCommand extends Command
                 $ifStatement .= "  if (meta.type == 'json' && docType == '";
                 $ifStatement .= $typeName;
                 $ifStatement .= "'  && doc.";
-                $ifStatement .= $this->getNamewithCase($array[0]->getName(), $this->typeFieldCase);
+                $ifStatement .= $this->getNamewithCase($array[0]->getForeignColumns()[0], $this->typeFieldCase);
                 $ifStatement .= " ){ \n";
-                $emitStatement .= "    emit(doc." . $array[0]->getName() . ");";
+                $emitStatement .= "    emit(doc." . $array[0]->getForeignColumns()[0] . ");";
             } elseif (!empty($array) && count($array) > 1) {
                 $emitStatement .= "    emit([";
                 $ifStatement .= "  if (meta.type == 'json' && docType == '";
@@ -263,8 +265,8 @@ class DBImportCommand extends Command
                 $ifStatement .= "'  && ";
 
                 for ($i = 0; $i < count($array); $i++) {
-                    $emitStatement .= "doc." . $this->getNamewithCase($array[$i]->getName(), $this->typeFieldCase);
-                    $ifStatement .= "doc." . $this->getNamewithCase($array[$i]->getName(), $this->typeFieldCase);
+                    $emitStatement .= "doc." . $this->getNamewithCase($array[$i]->getForeignColumns()[0], $this->typeFieldCase);
+                    $ifStatement .= "doc." . $this->getNamewithCase($array[$i]->getForeignColumns()[0], $this->typeFieldCase);
                     if ($i < (count($array) - 1)) {
                         $emitStatement .= ", ";
                         $ifStatement .= " && ";
@@ -281,8 +283,8 @@ class DBImportCommand extends Command
 
             $this->output->writeln("\n\n Create Couchbase views for table " . $typeName);
             $viewName = "by_pk";
-            $map = '{"views":{"'.$viewName.'":{"map":"'.$mapFunction.'","reduce":"_count"}}}';
-            $this->getCouchbaseClient()->openBucket($this->bucket)->manager()->upsertDesignDocument($viewName, $map);
+            $map = ["views" => [$viewName => ["map" => $mapFunction, "reduce" => '_count']]];
+            $this->getCouchbaseClient()->openBucket($this->bucket)->manager()->upsertDesignDocument($tableName, $map);
         } catch (RuntimeException $e) {
             $this->output->writeln($e->getTraceAsString());  //To change body of catch statement use File | Settings | File Templates.
         } catch (\Exception $e) {
@@ -295,17 +297,25 @@ class DBImportCommand extends Command
         $this->output->writeln("\n\n Create Couchbase views for 'types' ....");
 
         $viewName = "by_type";
-        $mapFunction =
-            "function (doc, meta) {\n" .
-            "  if (meta.type == \"json\") {\n" .
-            "    var idx = (meta.id).indexOf(\":\");\n" .
-            "    emit( (meta.id).substring(0,idx));\n" .
-            "  }  \n" .
-            "}";
 
-        $map = '{"views":{"all":{"map":"'.$mapFunction.'"}}}';
-        $reduce = '_count';
-        $this->getCouchbaseClient()->openBucket($this->bucket)->manager()->upsertDesignDocument($viewName, $map);
+        $mapFunction = [
+            "views" => [
+                $viewName => [
+                    "map" => 'function (doc, meta) {
+                        if (meta.type == "json") {
+                            var idx = (meta.id).indexOf(":");
+                            emit((meta.id).substring(0,idx));
+                        }
+                    }',
+                    "reduce" => '_count'
+                ]
+            ]
+        ];
+
+        $this->getCouchbaseClient()
+            ->openBucket($this->bucket)
+            ->manager()
+            ->upsertDesignDocument('all', $mapFunction);
     }
 
     /**

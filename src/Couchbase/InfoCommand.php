@@ -49,7 +49,7 @@ class InfoCommand extends Command
 
             $this->output->writeln(json_encode($info, JSON_PRETTY_PRINT));
         } catch (\Exception $e) {
-            $output->writeln($e->getTraceAsString());
+            $output->writeln($e->getMessage());
         }
     }
 
