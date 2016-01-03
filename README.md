@@ -16,6 +16,20 @@ $ box build
 ## Configuration
 
 see `./config.ini`
+```
+cb.bucket=default
+cb.username=Administrator
+cb.password=Password
+ 
+sql.database=database
+sql.username=root
+sql.password=
+ 
+import.tables=
+import.createViews=true
+import.typefield=
+import.fieldcase=
+```
 
 ## Commands
 
