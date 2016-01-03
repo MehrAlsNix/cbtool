@@ -1,5 +1,6 @@
 {
   "name": "mehr-als-nix/cbtool",
+  "license": "MIT",
   "authors": [
     {
       "name": "Siad Ardroumli",
