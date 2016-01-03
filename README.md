@@ -21,6 +21,22 @@ see `./config.ini`
 
 ### flush
 
+Flushes a bucket defined in `config.ini`:
+```
+$ cbtool flush config.ini
+```
+
 ### import
 
+Imports doctrine based database tables defined in `config.ini` to couchbase:
+```
+$ cbtool import config.ini
+```
+
+
 ### info
+
+Shows info of a bucket defined in `config.ini`:
+```
+$ cbtool info config.ini
+```
